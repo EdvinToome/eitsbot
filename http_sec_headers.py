@@ -8,34 +8,32 @@ app = Flask(__name__)
 
 sec_headers = dict()
 sec_headers_id = 0
+
+
 @app.route("/cmdb/relation/eitsbot/http_sec_headers")
 def cmdb():
-
     cur = db().cur
     conn = db().conn
-    cur.execute("SELECT * FROM archi_import WHERE ext_ipv4 IS NOT NULL")
+    cur.execute("SELECT * FROM archi_import WHERE url IS NOT NULL")
     rows = cur.fetchall()
     json_data = []
+
     for row in rows:
-        print(row[8])
+        ext_ipv4 = get_ext_ipv4(row)
         global sec_headers
         sec_headers = dict()
         global sec_headers_id
         sec_headers_id = 0
-        os.system("nmap -oX nmap_output.xml --script http-security-headers -p 443 " + row[8])
+        os.system(
+            "nmap -oX nmap_output.xml --script http-security-headers -p 443 " + ext_ipv4)
         f = open("nmap_output.xml")
-
         xml_content = f.read()
-
         f.close()
         matching_objects = []
-        data1 = json.dumps(xmltodict.parse(xml_content), indent=4, sort_keys=True)
-        data = json.loads(data1)
-
-
         answer = []
-        answer = process_json(data)
+        answer = process_json(xmltodict.parse(xml_content))
         result = ''
+
         for key, value in answer.items():
             i = 0
             for item, val in value.items():
@@ -55,13 +53,15 @@ def cmdb():
             {
                 "archi_id": row[0],
                 "url": row[6],
-                "ip": row[8],
+                "ext_ipv4": ext_ipv4,
                 "sec_headers": result
 
             }
 
         )
     return json.dumps(json_data)
+
+
 def process_json(json_obj):
 
     global sec_headers_id
@@ -78,7 +78,8 @@ def process_json(json_obj):
                 else:
                     if key == "@key":
                         sec_headers_id += 1
-                        sec_headers[str(sec_headers_id)] = {'key': None, 'value': None}
+                        sec_headers[str(sec_headers_id)] = {
+                            'key': None, 'value': None}
                         sec_headers[str(sec_headers_id)]['key'] = element
                     if key == "elem" and sec_headers[str(sec_headers_id)]['value'] == None:
                         sec_headers[str(sec_headers_id)]['value'] = element
@@ -89,10 +90,30 @@ def process_json(json_obj):
                 sec_headers_id += 1
                 sec_headers[str(sec_headers_id)] = {'key': None, 'value': None}
                 sec_headers[str(sec_headers_id)]['key'] = value
-            if key == "elem" and  sec_headers[str(sec_headers_id)]['value'] == None:
+            if key == "elem" and sec_headers[str(sec_headers_id)]['value'] == None:
                 sec_headers[str(sec_headers_id)]['value'] = value
     return sec_headers
 
+
+def get_ext_ipv4(row):
+    cur = db().cur
+    conn = db().conn
+    name = "CMS (" + row[2] + ")"
+    ext_ipv4 = ""
+    cur.execute("SELECT * FROM archi_import WHERE name = ?", (name,))
+    rows2 = cur.fetchall()
+    for row2 in rows2:
+        cur.execute(
+            "SELECT * FROM archi_graph WHERE source = ? OR target = ?", (row2[0], row2[0]))
+        rows3 = cur.fetchall()
+        for row3 in rows3:
+            cur.execute(
+                "SELECT * FROM archi_import WHERE (sid = ? OR sid = ?) AND ext_ipv4 IS NOT NULL", (row3[1], row3[2]))
+            rows4 = cur.fetchall()
+            if rows4[0][8] != None:
+                ext_ipv4 = rows4[0][8]
+                break
+    return ext_ipv4
 
 
 class database:

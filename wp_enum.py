@@ -6,26 +6,28 @@ import mariadb
 from flask import Flask
 app = Flask(__name__)
 http_check = dict()
+
+
 @app.route("/cmdb/relation/eitsbot/wp_enum")
 def cmdb():
     cur = db().cur
     conn = db().conn
-    cur.execute("SELECT * FROM archi_import WHERE ext_ipv4 IS NOT NULL")
+    cur.execute("SELECT * FROM archi_import WHERE url IS NOT NULL")
     rows = cur.fetchall()
     json_data = []
+
     for row in rows:
-        os.system("nmap -oX nmap_output.xml --script http-wordpress-enum -p 443 " + row[8])
+        ext_ipv4 = get_ext_ipv4(row)
+        os.system(
+            "nmap -oX nmap_output.xml --script http-wordpress-enum -p 443 " + ext_ipv4)
         f = open("nmap_output.xml")
         xml_content = f.read()
         f.close()
-        data1 = json.dumps(xmltodict.parse(xml_content), indent=4, sort_keys=True)
-        data = json.loads(data1)
-        print(data1)
-        answer = process_json(data)
-        print(answer)
+        answer = process_json(xmltodict.parse(xml_content))
         result = answer['value']
         tempanswer = result.split("\n")
         answer = ''
+
         for item in tempanswer:
             item = item.rstrip(' ')
             item = item.lstrip(' ')
@@ -38,19 +40,12 @@ def cmdb():
             {
                 "archi_id": row[0],
                 "url": row[6],
-                "ip": row[8],
+                "ext_ipv4": ext_ipv4,
                 "plugins": answer
 
             }
         )
-    print(json.dumps(json_data, indent=4, sort_keys=True))
     return json.dumps(json_data, indent=4, sort_keys=True)
-
-
-
-
-
-
 
 
 def process_json(json_obj):
@@ -71,16 +66,37 @@ def process_json(json_obj):
                     if key == "@id":
                         http_check['key'] = element
 
-
         # Otherwise, do something with the key and value
         else:
             if key == "@output":
                 http_check["value"] = value
             if key == "@id":
                 http_check["key"] = value
- 
+
     return http_check
 
+
+def get_ext_ipv4(row):
+    cur = db().cur
+    conn = db().conn
+    name = "CMS (" + row[2] + ")"
+    ext_ipv4 = ""
+    cur.execute("SELECT * FROM archi_import WHERE name = ?", (name,))
+    rows2 = cur.fetchall()
+
+    for row2 in rows2:
+        cur.execute(
+            "SELECT * FROM archi_graph WHERE source = ? OR target = ?", (row2[0], row2[0]))
+        rows3 = cur.fetchall()
+
+        for row3 in rows3:
+            cur.execute(
+                "SELECT * FROM archi_import WHERE (sid = ? OR sid = ?) AND ext_ipv4 IS NOT NULL", (row3[1], row3[2]))
+            rows4 = cur.fetchall()
+            if rows4[0][8] != None:
+                ext_ipv4 = rows4[0][8]
+                break
+    return ext_ipv4
 
 
 class database:
@@ -102,6 +118,3 @@ class database:
 
 def db():
     return database()
-
-if __name__ == "__main__":
-    main()

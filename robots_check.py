@@ -6,37 +6,37 @@ import mariadb
 from flask import Flask
 app = Flask(__name__)
 http_robots = []
-http_robots_id = 0
-@app.route("/cmdb/relation/eitsbot/http_robots")
+
+
+@app.route("/cmdb/relation/eitsbot/robots_check")
 def cmdb():
     cur = db().cur
     conn = db().conn
-    cur.execute("SELECT * FROM archi_import WHERE ext_ipv4 IS NOT NULL")
+    cur.execute("SELECT * FROM archi_import WHERE url IS NOT NULL")
     rows = cur.fetchall()
     json_data = []
+
     for row in rows:
-        os.system("nmap -oX nmap_output.xml --script http-robots.txt.nse -p 443 " + row[8])
+        ext_ipv4 = get_ext_ipv4(row)
+        os.system(
+            "nmap -oX nmap_output.xml --script http-robots.txt.nse -p 443 " + ext_ipv4)
         f = open("nmap_output.xml")
         xml_content = f.read()
         f.close()
         matching_objects = []
         global http_robots
         http_robots = []
-        data1 = json.dumps(xmltodict.parse(xml_content), indent=4, sort_keys=True)
-        data = json.loads(data1)
-        print(data1)
-        tempanswer = process_json(data)
-        print(tempanswer)
+        tempanswer = process_json(xmltodict.parse(xml_content))
         answer = []
+
         for item in tempanswer:
             tempitem = item.split('\n', 1)
             item = tempitem[1]
             item = item.replace('\n', '')
             itemlist = re.split(' ', item)
             answer.extend(itemlist)
-            print(item)
-        print(answer)
         result = ''
+
         for item in answer:
             result += item + '; '
         result = result.rstrip('; ')
@@ -44,16 +44,16 @@ def cmdb():
             {
                 "archi_id": row[0],
                 "url": row[6],
-                "ip": row[8],
+                "ext_ipv4": ext_ipv4,
                 "disallowed": result
 
             }
         )
     return json.dumps(json_data, indent=4, sort_keys=True)
 
+
 def process_json(json_obj):
 
-    global http_robots_id
     # Iterate over the key-value pairs in the dictionary
     for key, value in json_obj.items():
         # If the value is a dictionary, recursively process it
@@ -68,14 +68,33 @@ def process_json(json_obj):
                     if key == "@output":
                         http_robots.append(element)
 
-
         # Otherwise, do something with the key and value
         else:
             if key == "@output":
                 http_robots.append(value)
- 
+
     return http_robots
 
+
+def get_ext_ipv4(row):
+    cur = db().cur
+    conn = db().conn
+    name = "CMS (" + row[2] + ")"
+    ext_ipv4 = ""
+    cur.execute("SELECT * FROM archi_import WHERE name = ?", (name,))
+    rows2 = cur.fetchall()
+    for row2 in rows2:
+        cur.execute(
+            "SELECT * FROM archi_graph WHERE source = ? OR target = ?", (row2[0], row2[0]))
+        rows3 = cur.fetchall()
+        for row3 in rows3:
+            cur.execute(
+                "SELECT * FROM archi_import WHERE (sid = ? OR sid = ?) AND ext_ipv4 IS NOT NULL", (row3[1], row3[2]))
+            rows4 = cur.fetchall()
+            if rows4[0][8] != None:
+                ext_ipv4 = rows4[0][8]
+                break
+    return ext_ipv4
 
 
 class database:
