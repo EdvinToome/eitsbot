@@ -41,8 +41,8 @@ def cmdb():
                     tempval = val.split('Header:')
                     val = tempval[1]
                     val = val.lstrip(' ')
-                if item == 'key' and not re.search(r'Strict_Transport_Security', val, re.IGNORECASE) and not re.search(r'X_XSS_Protection', val, re.IGNORECASE) and not re.search(r'Cookie', val, re.IGNORECASE):
-                    break
+#                if item == 'key' and not re.search(r'Strict_Transport_Security', val, re.IGNORECASE) and not re.search(r'X_XSS_Protection', val, re.IGNORECASE) and not re.search(r'Cookie', val, re.IGNORECASE):
+#                    break
                 if i == 0:
                     result += val + ': '
                     i = 1
